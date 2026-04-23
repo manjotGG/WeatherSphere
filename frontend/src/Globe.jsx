@@ -14,29 +14,27 @@ export default function Globe() {
       1000
     );
 
-    camera.position.set(0, 0, 10);
+    camera.position.z = 10;
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setPixelRatio(window.devicePixelRatio);
-    renderer.setClearColor(0x000000);
 
-    // attach canvas
-    if (mountRef.current) {
-      mountRef.current.appendChild(renderer.domElement);
-    }
+    mountRef.current.appendChild(renderer.domElement);
 
-    // 🌍 Earth (simple visible version)
     const geometry = new THREE.SphereGeometry(5, 64, 64);
+
+    // 🔥 FIXED TEXTURE PATH
+    const texture = new THREE.TextureLoader().load(
+      window.location.origin + "/earth_texture.jpg"
+    );
+
     const material = new THREE.MeshBasicMaterial({
-      color: 0x00ffcc,
-      wireframe: true,
+      map: texture,
     });
 
     const globe = new THREE.Mesh(geometry, material);
     scene.add(globe);
 
-    // animation loop
     function animate() {
       requestAnimationFrame(animate);
       globe.rotation.y += 0.01;
@@ -44,23 +42,12 @@ export default function Globe() {
     }
 
     animate();
-
-    // cleanup
-    return () => {
-      if (mountRef.current) {
-        mountRef.current.removeChild(renderer.domElement);
-      }
-    };
   }, []);
 
   return (
     <div
       ref={mountRef}
-      style={{
-        width: "100vw",
-        height: "100vh",
-        overflow: "hidden",
-      }}
+      style={{ width: "100vw", height: "100vh" }}
     />
   );
 }
