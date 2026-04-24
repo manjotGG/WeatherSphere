@@ -1,116 +1,438 @@
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls";
+import { Earcut } from "three/src/extras/Earcut.js";
+
+const EARTH_RADIUS = 5;
+const HOVER_DELAY = 1000;
+const GEOJSON_URL = "/data/countries.geojson";
+const ZOOM_MIN = 6;
+const ZOOM_MAX = 18;
+
+function normalizeLongitude(lon) {
+  let normalized = lon;
+  if (normalized > 180) normalized -= 360;
+  if (normalized < -180) normalized += 360;
+  return normalized;
+}
+
+function latLonToVector(lon, lat, radius = EARTH_RADIUS) {
+  const phi = THREE.MathUtils.degToRad(90 - lat);
+  const theta = THREE.MathUtils.degToRad(lon + 180);
+  const x = radius * Math.sin(phi) * Math.cos(theta);
+  const y = radius * Math.cos(phi);
+  const z = radius * Math.sin(phi) * Math.sin(theta);
+  return new THREE.Vector3(x, y, z);
+}
+
+function pointInRing(lon, lat, ring) {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const xi = ring[i][0];
+    const yi = ring[i][1];
+    const xj = ring[j][0];
+    const yj = ring[j][1];
+    const intersect =
+      yi > lat !== yj > lat &&
+      lon < ((xj - xi) * (lat - yi)) / (yj - yi) + xi;
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+function countryContains(feature, lon, lat) {
+  if (!feature || !feature.geometry) return false;
+  const type = feature.geometry.type;
+  if (type === "Polygon") {
+    const rings = feature.geometry.coordinates;
+    if (!pointInRing(lon, lat, rings[0])) return false;
+    for (let i = 1; i < rings.length; i += 1) {
+      if (pointInRing(lon, lat, rings[i])) return false;
+    }
+    return true;
+  }
+  if (type === "MultiPolygon") {
+    for (const polygon of feature.geometry.coordinates) {
+      const outer = polygon[0];
+      if (!pointInRing(lon, lat, outer)) continue;
+      let insideHole = false;
+      for (let i = 1; i < polygon.length; i += 1) {
+        if (pointInRing(lon, lat, polygon[i])) {
+          insideHole = true;
+          break;
+        }
+      }
+      if (!insideHole) return true;
+    }
+  }
+  return false;
+}
+
+function prepareCountryData(geojson) {
+  geojson.features.forEach((feature) => {
+    const rings =
+      feature.geometry.type === "Polygon"
+        ? feature.geometry.coordinates
+        : feature.geometry.coordinates.flat(1);
+
+    let minLon = 180;
+    let maxLon = -180;
+    let minLat = 90;
+    let maxLat = -90;
+
+    rings.forEach((ring) => {
+      ring.forEach(([lon, lat]) => {
+        const normalizedLon = normalizeLongitude(lon);
+        minLon = Math.min(minLon, normalizedLon);
+        maxLon = Math.max(maxLon, normalizedLon);
+        minLat = Math.min(minLat, lat);
+        maxLat = Math.max(maxLat, lat);
+      });
+    });
+
+    feature.bbox = {
+      minLon,
+      maxLon,
+      minLat,
+      maxLat,
+      crossesAntimeridian: maxLon - minLon > 180,
+    };
+  });
+  return geojson;
+}
+
+function isInBbox(lon, lat, bbox) {
+  if (lat < bbox.minLat || lat > bbox.maxLat) return false;
+  if (!bbox.crossesAntimeridian) {
+    return lon >= bbox.minLon && lon <= bbox.maxLon;
+  }
+  return lon >= bbox.maxLon || lon <= bbox.minLon;
+}
+
+function buildCountryHighlight(feature, lineMaterial, fillMaterial) {
+  const group = new THREE.Group();
+  if (!feature || !feature.geometry) return group;
+
+  const polygons =
+    feature.geometry.type === "Polygon"
+      ? [feature.geometry.coordinates]
+      : feature.geometry.coordinates;
+
+  polygons.forEach((polygon) => {
+    const flat = [];
+    const holeIndices = [];
+
+    polygon.forEach((ring, index) => {
+      if (index > 0) holeIndices.push(flat.length / 2);
+      ring.forEach(([lon, lat]) => {
+        flat.push(normalizeLongitude(lon), lat);
+      });
+    });
+
+    const positionList = [];
+    polygon.forEach((ring) => {
+      ring.forEach(([lon, lat]) => {
+        const vec = latLonToVector(normalizeLongitude(lon), lat, EARTH_RADIUS * 1.001);
+        positionList.push(vec.x, vec.y, vec.z);
+      });
+    });
+
+    const lineVertices = [];
+    polygon.forEach((ring) => {
+      ring.forEach(([lon, lat]) => {
+        const vec = latLonToVector(normalizeLongitude(lon), lat, EARTH_RADIUS * 1.001);
+        lineVertices.push(vec.x, vec.y, vec.z);
+      });
+      if (ring.length > 0) {
+        const [lon, lat] = ring[0];
+        const first = latLonToVector(normalizeLongitude(lon), lat, EARTH_RADIUS * 1.001);
+        lineVertices.push(first.x, first.y, first.z);
+      }
+    });
+
+    if (lineVertices.length > 0) {
+      const lineGeo = new THREE.BufferGeometry();
+      lineGeo.setAttribute("position", new THREE.Float32BufferAttribute(lineVertices, 3));
+      group.add(new THREE.Line(lineGeo, lineMaterial));
+    }
+
+    try {
+      const indices = Earcut(flat, holeIndices, 2);
+      if (indices.length > 0) {
+        const fillGeo = new THREE.BufferGeometry();
+        fillGeo.setAttribute("position", new THREE.Float32BufferAttribute(positionList, 3));
+        fillGeo.setIndex(indices);
+        fillGeo.computeVertexNormals();
+        group.add(new THREE.Mesh(fillGeo, fillMaterial));
+      }
+    } catch (error) {
+      // ignore triangulation failures for extremely complex outlines
+    }
+  });
+
+  return group;
+}
 
 export default function Globe() {
   const mountRef = useRef(null);
-  const debounceRef = useRef(null);
+  const cameraRef = useRef(null);
+  const hoverTimerRef = useRef(null);
+  const countryDataRef = useRef(null);
+  const weatherCacheRef = useRef({});
 
   const [tooltip, setTooltip] = useState({
     x: 0,
     y: 0,
-    lat: null,
-    lon: null,
+    country: null,
     temp: null,
     visible: false,
+    pending: false,
   });
+
+  const [zoomValue, setZoomValue] = useState(10);
+
+  useEffect(() => {
+    fetch(GEOJSON_URL)
+      .then((res) => res.json())
+      .then((data) => {
+        countryDataRef.current = prepareCountryData(data);
+      })
+      .catch((error) => {
+        console.warn("无法加载国家 GeoJSON：", error);
+      });
+  }, []);
 
   useEffect(() => {
     if (!mountRef.current) return;
 
-    // clean old canvas
     while (mountRef.current.firstChild) {
       mountRef.current.removeChild(mountRef.current.firstChild);
     }
 
     const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x000000);
 
     const width = mountRef.current.clientWidth;
     const height = mountRef.current.clientHeight;
 
-    const camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000);
-    camera.position.set(0, 0, 10);
+    const camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 2000);
+    camera.position.set(0, 0, zoomValue);
+    cameraRef.current = camera;
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setPixelRatio(window.devicePixelRatio || 1);
     renderer.setSize(width, height);
-    renderer.setPixelRatio(window.devicePixelRatio);
-
+    renderer.shadowMap.enabled = false;
     mountRef.current.appendChild(renderer.domElement);
 
-    // 🌍 Globe
-    const geometry = new THREE.SphereGeometry(5, 64, 64);
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.85);
+    scene.add(ambientLight);
 
-    const texture = new THREE.TextureLoader().load(
-      window.location.origin + "/earth_texture.jpg"
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.3);
+    directionalLight.position.set(8, 10, 8);
+    scene.add(directionalLight);
+
+    const starGeometry = new THREE.BufferGeometry();
+    const starCount = 3000;
+    const positions = new Float32Array(starCount * 3);
+    const colors = new Float32Array(starCount * 3);
+
+    for (let i = 0; i < starCount; i++) {
+      const radius = 80 + Math.random() * 20;
+      const theta = Math.random() * Math.PI * 2;
+      const phi = Math.acos(2 * Math.random() - 1);
+
+      positions[i * 3] = radius * Math.sin(phi) * Math.cos(theta);
+      positions[i * 3 + 1] = radius * Math.cos(phi);
+      positions[i * 3 + 2] = radius * Math.sin(phi) * Math.sin(theta);
+
+      const brightness = 0.5 + Math.random() * 0.5;
+      colors[i * 3] = brightness;
+      colors[i * 3 + 1] = brightness;
+      colors[i * 3 + 2] = brightness;
+    }
+
+    starGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    starGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+    const starMaterial = new THREE.PointsMaterial({
+      size: 0.8,
+      vertexColors: true,
+      transparent: true,
+      opacity: 0.8,
+    });
+
+    const stars = new THREE.Points(starGeometry, starMaterial);
+    scene.add(stars);
+
+    const earthTexture = new THREE.TextureLoader().load("https://threejs.org/examples/textures/planets/earth_atmos_2048.jpg", (texture) => {
+      const max = renderer.capabilities.getMaxAnisotropy();
+      texture.anisotropy = max;
+      texture.minFilter = THREE.LinearMipMapLinearFilter;
+      texture.magFilter = THREE.LinearFilter;
+      texture.generateMipmaps = true;
+    });
+
+    const globe = new THREE.Mesh(
+      new THREE.SphereGeometry(EARTH_RADIUS, 64, 64),
+      new THREE.MeshStandardMaterial({
+        map: earthTexture,
+        roughness: 1,
+        metalness: 0,
+      })
     );
-
-    const material = new THREE.MeshBasicMaterial({ map: texture });
-    const globe = new THREE.Mesh(geometry, material);
     scene.add(globe);
 
-    // 🔴 Highlight dot
-    const highlightGeo = new THREE.SphereGeometry(0.12, 16, 16);
-    const highlightMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
-    const highlight = new THREE.Mesh(highlightGeo, highlightMat);
-    scene.add(highlight);
-    highlight.visible = false;
+    const highlightGroup = new THREE.Group();
+    scene.add(highlightGroup);
 
-    // 🎮 Controls
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
+    controls.dampingFactor = 0.08;
     controls.enableZoom = true;
-    controls.minDistance = 6;
-    controls.maxDistance = 20;
+    controls.minDistance = ZOOM_MIN;
+    controls.maxDistance = ZOOM_MAX;
+    controls.maxPolarAngle = Math.PI * 0.95;
     controls.enablePan = false;
 
-    // 🎯 Raycaster
     const raycaster = new THREE.Raycaster();
     const mouse = new THREE.Vector2();
 
-    const onMouseMove = (event) => {
-      const rect = renderer.domElement.getBoundingClientRect();
+    const clearHighlight = () => {
+      while (highlightGroup.children.length) {
+        const child = highlightGroup.children[0];
+        if (child.geometry) child.geometry.dispose();
+        if (child.material) child.material.dispose();
+        highlightGroup.remove(child);
+      }
+    };
 
+    const updateCountryHighlight = (feature) => {
+      clearHighlight();
+      if (!feature) return;
+      const lineMaterial = new THREE.LineBasicMaterial({
+        color: 0x26d3ff,
+        transparent: true,
+        opacity: 0.95,
+        linewidth: 2,
+      });
+      const fillMaterial = new THREE.MeshBasicMaterial({
+        color: 0x26d3ff,
+        transparent: true,
+        opacity: 0.18,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      });
+      const highlightMesh = buildCountryHighlight(feature, lineMaterial, fillMaterial);
+      highlightGroup.add(highlightMesh);
+    };
+
+    const findCountry = (lat, lon) => {
+      const data = countryDataRef.current;
+      if (!data) return null;
+      const normalizedLon = normalizeLongitude(lon);
+      for (const feature of data.features) {
+        if (!feature.bbox || !isInBbox(normalizedLon, lat, feature.bbox)) continue;
+        if (countryContains(feature, normalizedLon, lat)) return feature;
+      }
+      return null;
+    };
+
+    const fetchWeather = async (lat, lon) => {
+      const apiKey = import.meta.env.VITE_OPENWEATHERMAP_API_KEY;
+      let response;
+      if (apiKey) {
+        response = await fetch(
+          `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&units=metric&appid=${apiKey}`
+        );
+      } else {
+        response = await fetch(
+          `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&temperature_unit=celsius`
+        );
+      }
+      const data = await response.json();
+      return apiKey
+        ? data?.main?.temp ?? "N/A"
+        : data?.current_weather?.temperature ?? "N/A";
+    };
+
+    const handleMove = (event) => {
+      const rect = renderer.domElement.getBoundingClientRect();
       mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
       mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-
       raycaster.setFromCamera(mouse, camera);
       const intersects = raycaster.intersectObject(globe);
 
       if (intersects.length > 0) {
         const point = intersects[0].point;
-
-        // move highlight
-        highlight.position
-          .copy(point.clone().normalize().multiplyScalar(5.05));
-        highlight.visible = true;
-
-        const radius = 5;
-
         const lat =
-          90 - (Math.acos(point.y / radius) * 180) / Math.PI;
-
-        const lon =
-          ((Math.atan2(point.z, point.x) * 180) / Math.PI + 180) %
-            360 -
-          180;
+          90 -
+          THREE.MathUtils.radToDeg(
+            Math.acos(point.y / EARTH_RADIUS)
+          );
+        const lon = normalizeLongitude(
+          THREE.MathUtils.radToDeg(Math.atan2(point.z, point.x))
+        );
 
         setTooltip((prev) => ({
           ...prev,
           x: event.clientX,
           y: event.clientY,
-          lat: lat.toFixed(2),
-          lon: lon.toFixed(2),
-          visible: true,
+          visible: false,
+          pending: true,
         }));
+
+        if (hoverTimerRef.current) {
+          clearTimeout(hoverTimerRef.current);
+        }
+
+        hoverTimerRef.current = window.setTimeout(async () => {
+          const countryFeature = findCountry(lat, lon);
+          const countryName =
+            countryFeature?.properties.ADMIN ||
+            countryFeature?.properties.NAME ||
+            "Unknown";
+          const cacheKey = `${countryName}|${lat.toFixed(1)}|${lon.toFixed(1)}`;
+          let temp = weatherCacheRef.current[cacheKey];
+          if (temp === undefined) {
+            try {
+              temp = await fetchWeather(lat, lon);
+            } catch (error) {
+              temp = "N/A";
+            }
+            weatherCacheRef.current[cacheKey] = temp;
+          }
+          setTooltip({
+            x: event.clientX,
+            y: event.clientY,
+            country: countryName,
+            temp,
+            visible: true,
+            pending: false,
+          });
+          updateCountryHighlight(countryFeature);
+        }, HOVER_DELAY);
       } else {
-        highlight.visible = false;
-        setTooltip((prev) => ({ ...prev, visible: false }));
+        if (hoverTimerRef.current) {
+          clearTimeout(hoverTimerRef.current);
+        }
+        setTooltip({ x: 0, y: 0, country: null, temp: null, visible: false, pending: false });
+        updateCountryHighlight(null);
       }
     };
 
-    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mousemove", handleMove);
 
-    // 🔁 Animation
+    const handleResize = () => {
+      const width = mountRef.current.clientWidth;
+      const height = mountRef.current.clientHeight;
+      camera.aspect = width / height;
+      camera.updateProjectionMatrix();
+      renderer.setSize(width, height);
+    };
+
+    window.addEventListener("resize", handleResize);
+
     let frameId;
     const animate = () => {
       frameId = requestAnimationFrame(animate);
@@ -120,79 +442,93 @@ export default function Globe() {
 
     animate();
 
-    // 📱 Resize
-    const handleResize = () => {
-      const width = mountRef.current.clientWidth;
-      const height = mountRef.current.clientHeight;
-
-      renderer.setSize(width, height);
-      camera.aspect = width / height;
-      camera.updateProjectionMatrix();
-    };
-
-    window.addEventListener("resize", handleResize);
-
     return () => {
+      if (hoverTimerRef.current) {
+        clearTimeout(hoverTimerRef.current);
+      }
       cancelAnimationFrame(frameId);
+      window.removeEventListener("mousemove", handleMove);
       window.removeEventListener("resize", handleResize);
-      window.removeEventListener("mousemove", onMouseMove);
+      controls.dispose();
       renderer.dispose();
     };
   }, []);
 
-  // 🌦️ Debounced Weather Fetch (NO LAG)
-  useEffect(() => {
-    if (!tooltip.lat || !tooltip.lon) return;
-
-    clearTimeout(debounceRef.current);
-
-    debounceRef.current = setTimeout(async () => {
-      try {
-        const res = await fetch(
-          `https://api.open-meteo.com/v1/forecast?latitude=${tooltip.lat}&longitude=${tooltip.lon}&current_weather=true`
-        );
-
-        const data = await res.json();
-
-        const temp = data?.current_weather?.temperature;
-
-        setTooltip((prev) => ({
-          ...prev,
-          temp: temp ?? "N/A",
-        }));
-      } catch (err) {
-        console.log("Weather error:", err);
-      }
-    }, 400); // smooth delay
-  }, [tooltip.lat, tooltip.lon]);
+  const changeZoom = (delta) => {
+    const camera = cameraRef.current;
+    if (!camera) return;
+    const next = THREE.MathUtils.clamp(camera.position.z + delta, ZOOM_MIN, ZOOM_MAX);
+    camera.position.z = next;
+    setZoomValue(next);
+  };
 
   return (
     <>
-      <div
-        ref={mountRef}
-        style={{ width: "100vw", height: "100vh" }}
-      />
+      <div ref={mountRef} style={{ width: "100vw", height: "100vh" }} />
 
-      {/* 💬 Tooltip */}
-      {tooltip.visible && (
+      <div
+        style={{
+          position: "fixed",
+          right: 18,
+          bottom: 18,
+          display: "flex",
+          flexDirection: "column",
+          gap: 10,
+          zIndex: 10,
+        }}
+      >
+        <button type="button" style={buttonStyle} onClick={() => changeZoom(-1)}>
+          +
+        </button>
+        <button type="button" style={buttonStyle} onClick={() => changeZoom(1)}>
+          -
+        </button>
+      </div>
+
+      {(tooltip.visible || tooltip.pending) && (
         <div
           style={{
             position: "fixed",
-            top: tooltip.y + 12,
-            left: tooltip.x + 12,
-            background: "rgba(0,0,0,0.8)",
-            color: "#fff",
-            padding: "10px 12px",
-            borderRadius: "10px",
-            fontSize: "13px",
+            top: tooltip.y + 16,
+            left: tooltip.x + 16,
+            minWidth: 180,
+            maxWidth: 260,
+            background: "rgba(8, 12, 24, 0.78)",
+            color: "#f8f9ff",
+            padding: "14px 16px",
+            borderRadius: 16,
+            border: "1px solid rgba(255,255,255,0.14)",
+            boxShadow: "0 18px 50px rgba(0,0,0,0.25)",
             pointerEvents: "none",
-            backdropFilter: "blur(6px)",
+            backdropFilter: "blur(14px)",
+            zIndex: 20,
+            fontFamily: "system-ui, -apple-system, sans-serif",
           }}
         >
-          🌍 {tooltip.lat}, {tooltip.lon} <br />
-          🌡️ {tooltip.temp ?? "..."} °C
+          <div style={{ fontSize: 14, opacity: 0.75, marginBottom: 6 }}>
+            {tooltip.pending ? "Hover for 1 second to show weather" : "Country Info"}
+          </div>
+          <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>
+            {tooltip.country ?? "Unknown"}
+          </div>
+          <div style={{ fontSize: 14, lineHeight: 1.5 }}>
+            Avg Temp: {tooltip.temp ?? "..."}°C
+          </div>
         </div>
       )}
     </>
   );
 }
+
+const buttonStyle = {
+  width: 52,
+  height: 52,
+  borderRadius: 16,
+  border: "1px solid rgba(255,255,255,0.18)",
+  background: "rgba(9, 16, 32, 0.95)",
+  color: "#fff",
+  fontSize: 24,
+  fontFamily: "system-ui, -apple-system, sans-serif",
+  cursor: "pointer",
+  boxShadow: "0 14px 28px rgba(0,0,0,0.22)",
+};
