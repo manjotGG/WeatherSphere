@@ -4,10 +4,10 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls";
 import { Earcut } from "three/src/extras/Earcut.js";
 
 const EARTH_RADIUS = 5;
-const HOVER_DELAY = 1000;
 const GEOJSON_URL = "/data/countries.geojson";
 const ZOOM_MIN = 6;
 const ZOOM_MAX = 18;
+const MOUSE_MOVE_THROTTLE = 100; // ms
 
 function normalizeLongitude(lon) {
   let normalized = lon;
@@ -176,9 +176,18 @@ function buildCountryHighlight(feature, lineMaterial, fillMaterial) {
 export default function Globe() {
   const mountRef = useRef(null);
   const cameraRef = useRef(null);
-  const hoverTimerRef = useRef(null);
   const countryDataRef = useRef(null);
   const weatherCacheRef = useRef({});
+  const lastMouseTimeRef = useRef(0);
+  const highlightGroupRef = useRef(null);
+  const highlightAnimRef = useRef({ opacity: 0 });
+  const tooltipAnimRef = useRef({ opacity: 0, scale: 0.8, offsetY: 10 });
+  const rendererRef = useRef(null);
+  const raycasterRef = useRef(null);
+  const mouseRef = useRef(new THREE.Vector2());
+  const globeRef = useRef(null);
+  const cameraForCursorRef = useRef(null);
+  const lastHoveredCountryRef = useRef(null);
 
   const [tooltip, setTooltip] = useState({
     x: 0,
@@ -186,10 +195,14 @@ export default function Globe() {
     country: null,
     temp: null,
     visible: false,
-    pending: false,
   });
 
   const [zoomValue, setZoomValue] = useState(10);
+  const [ripples, setRipples] = useState([]);
+  const [highlightOpacity, setHighlightOpacity] = useState(0);
+  const [tooltipOpacity, setTooltipOpacity] = useState(0);
+  const [tooltipScale, setTooltipScale] = useState(0.8);
+  const [tooltipOffsetY, setTooltipOffsetY] = useState(10);
 
   useEffect(() => {
     fetch(GEOJSON_URL)
@@ -198,7 +211,7 @@ export default function Globe() {
         countryDataRef.current = prepareCountryData(data);
       })
       .catch((error) => {
-        console.warn("无法加载国家 GeoJSON：", error);
+        console.warn("Failed to load country GeoJSON:", error);
       });
   }, []);
 
@@ -218,12 +231,15 @@ export default function Globe() {
     const camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 2000);
     camera.position.set(0, 0, zoomValue);
     cameraRef.current = camera;
+    cameraForCursorRef.current = camera;
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setPixelRatio(window.devicePixelRatio || 1);
     renderer.setSize(width, height);
     renderer.shadowMap.enabled = false;
     mountRef.current.appendChild(renderer.domElement);
+    renderer.domElement.style.cursor = "grab";
+    rendererRef.current = renderer;
 
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.85);
     scene.add(ambientLight);
@@ -265,13 +281,9 @@ export default function Globe() {
     const stars = new THREE.Points(starGeometry, starMaterial);
     scene.add(stars);
 
-    const earthTexture = new THREE.TextureLoader().load("https://threejs.org/examples/textures/planets/earth_atmos_2048.jpg", (texture) => {
-      const max = renderer.capabilities.getMaxAnisotropy();
-      texture.anisotropy = max;
-      texture.minFilter = THREE.LinearMipMapLinearFilter;
-      texture.magFilter = THREE.LinearFilter;
-      texture.generateMipmaps = true;
-    });
+    const earthTexture = new THREE.TextureLoader().load("https://threejs.org/examples/textures/planets/earth_atmos_2048.jpg");
+    earthTexture.minFilter = THREE.LinearMipMapLinearFilter;
+    earthTexture.magFilter = THREE.LinearFilter;
 
     const globe = new THREE.Mesh(
       new THREE.SphereGeometry(EARTH_RADIUS, 64, 64),
@@ -282,9 +294,11 @@ export default function Globe() {
       })
     );
     scene.add(globe);
+    globeRef.current = globe;
 
     const highlightGroup = new THREE.Group();
     scene.add(highlightGroup);
+    highlightGroupRef.current = highlightGroup;
 
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
@@ -296,7 +310,7 @@ export default function Globe() {
     controls.enablePan = false;
 
     const raycaster = new THREE.Raycaster();
-    const mouse = new THREE.Vector2();
+    raycasterRef.current = raycaster;
 
     const clearHighlight = () => {
       while (highlightGroup.children.length) {
@@ -305,26 +319,42 @@ export default function Globe() {
         if (child.material) child.material.dispose();
         highlightGroup.remove(child);
       }
+      highlightAnimRef.current.opacity = 0;
+      setHighlightOpacity(0);
     };
 
     const updateCountryHighlight = (feature) => {
       clearHighlight();
       if (!feature) return;
+
       const lineMaterial = new THREE.LineBasicMaterial({
         color: 0x26d3ff,
         transparent: true,
         opacity: 0.95,
         linewidth: 2,
       });
+
       const fillMaterial = new THREE.MeshBasicMaterial({
         color: 0x26d3ff,
         transparent: true,
-        opacity: 0.18,
+        opacity: 0.15,
         side: THREE.DoubleSide,
         depthWrite: false,
       });
-      const highlightMesh = buildCountryHighlight(feature, lineMaterial, fillMaterial);
-      highlightGroup.add(highlightMesh);
+
+      const countryMesh = buildCountryHighlight(feature, lineMaterial, fillMaterial);
+      highlightGroup.add(countryMesh);
+
+      // Animate highlight in
+      highlightAnimRef.current.opacity = 0;
+      const animateIn = () => {
+        if (highlightAnimRef.current.opacity < 1) {
+          highlightAnimRef.current.opacity = Math.min(highlightAnimRef.current.opacity + 0.08, 1);
+          setHighlightOpacity(highlightAnimRef.current.opacity);
+          requestAnimationFrame(animateIn);
+        }
+      };
+      animateIn();
     };
 
     const findCountry = (lat, lon) => {
@@ -356,11 +386,45 @@ export default function Globe() {
         : data?.current_weather?.temperature ?? "N/A";
     };
 
+    const addRipple = (x, y) => {
+      const id = Math.random();
+      setRipples((prev) => [...prev, { id, x, y, radius: 0 }]);
+
+      let radius = 0;
+      const maxRadius = 40;
+      const duration = 600;
+      const startTime = Date.now();
+
+      const animateRipple = () => {
+        const elapsed = Date.now() - startTime;
+        radius = (elapsed / duration) * maxRadius;
+
+        setRipples((prev) =>
+          prev.map((r) =>
+            r.id === id ? { ...r, radius } : r
+          )
+        );
+
+        if (elapsed < duration) {
+          requestAnimationFrame(animateRipple);
+        } else {
+          setRipples((prev) => prev.filter((r) => r.id !== id));
+        }
+      };
+
+      animateRipple();
+    };
+
     const handleMove = (event) => {
+      const now = Date.now();
+      if (now - lastMouseTimeRef.current < MOUSE_MOVE_THROTTLE) return;
+      lastMouseTimeRef.current = now;
+
       const rect = renderer.domElement.getBoundingClientRect();
-      mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-      mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-      raycaster.setFromCamera(mouse, camera);
+      mouseRef.current.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      mouseRef.current.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+      raycaster.setFromCamera(mouseRef.current, camera);
       const intersects = raycaster.intersectObject(globe);
 
       if (intersects.length > 0) {
@@ -374,53 +438,121 @@ export default function Globe() {
           THREE.MathUtils.radToDeg(Math.atan2(point.z, point.x))
         );
 
-        setTooltip((prev) => ({
-          ...prev,
-          x: event.clientX,
-          y: event.clientY,
-          visible: false,
-          pending: true,
-        }));
+        const countryFeature = findCountry(lat, lon);
+        const countryName =
+          countryFeature?.properties.ADMIN ||
+          countryFeature?.properties.NAME ||
+          null;
 
-        if (hoverTimerRef.current) {
-          clearTimeout(hoverTimerRef.current);
-        }
+        if (countryName) {
+          addRipple(event.clientX - rect.left, event.clientY - rect.top);
 
-        hoverTimerRef.current = window.setTimeout(async () => {
-          const countryFeature = findCountry(lat, lon);
-          const countryName =
-            countryFeature?.properties.ADMIN ||
-            countryFeature?.properties.NAME ||
-            "Unknown";
           const cacheKey = `${countryName}|${lat.toFixed(1)}|${lon.toFixed(1)}`;
           let temp = weatherCacheRef.current[cacheKey];
+
           if (temp === undefined) {
-            try {
-              temp = await fetchWeather(lat, lon);
-            } catch (error) {
-              temp = "N/A";
-            }
-            weatherCacheRef.current[cacheKey] = temp;
+            fetchWeather(lat, lon)
+              .then((weatherTemp) => {
+                weatherCacheRef.current[cacheKey] = weatherTemp;
+                setTooltip({
+                  x: event.clientX,
+                  y: event.clientY,
+                  country: countryName,
+                  temp: weatherTemp,
+                  visible: true,
+                });
+                animateTooltipIn();
+              })
+              .catch(() => {
+                weatherCacheRef.current[cacheKey] = "N/A";
+                setTooltip({
+                  x: event.clientX,
+                  y: event.clientY,
+                  country: countryName,
+                  temp: "N/A",
+                  visible: true,
+                });
+                animateTooltipIn();
+              });
+          } else {
+            setTooltip({
+              x: event.clientX,
+              y: event.clientY,
+              country: countryName,
+              temp,
+              visible: true,
+            });
+            animateTooltipIn();
           }
-          setTooltip({
-            x: event.clientX,
-            y: event.clientY,
-            country: countryName,
-            temp,
-            visible: true,
-            pending: false,
-          });
+
           updateCountryHighlight(countryFeature);
-        }, HOVER_DELAY);
-      } else {
-        if (hoverTimerRef.current) {
-          clearTimeout(hoverTimerRef.current);
+        } else {
+          clearHighlight();
+          setTooltip({ x: 0, y: 0, country: null, temp: null, visible: false });
+          setTooltipOpacity(0);
         }
-        setTooltip({ x: 0, y: 0, country: null, temp: null, visible: false, pending: false });
-        updateCountryHighlight(null);
+      } else {
+        clearHighlight();
+        setTooltip({ x: 0, y: 0, country: null, temp: null, visible: false });
+        setTooltipOpacity(0);
       }
     };
 
+    const animateTooltipIn = () => {
+      tooltipAnimRef.current = { opacity: 0, scale: 0.8, offsetY: 10 };
+      const animateIn = () => {
+        if (tooltipAnimRef.current.opacity < 1) {
+          tooltipAnimRef.current.opacity = Math.min(tooltipAnimRef.current.opacity + 0.1, 1);
+          tooltipAnimRef.current.scale = 0.8 + tooltipAnimRef.current.opacity * 0.2;
+          tooltipAnimRef.current.offsetY = 10 - tooltipAnimRef.current.opacity * 8;
+          setTooltipOpacity(tooltipAnimRef.current.opacity);
+          setTooltipScale(tooltipAnimRef.current.scale);
+          setTooltipOffsetY(tooltipAnimRef.current.offsetY);
+          requestAnimationFrame(animateIn);
+        }
+      };
+      animateIn();
+    };
+
+    // Fast cursor update handler (unthrottled for smooth cursor feedback)
+    const handleMouseMoveCursor = (event) => {
+      const rect = renderer.domElement.getBoundingClientRect();
+      const x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      const y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+      mouseRef.current.x = x;
+      mouseRef.current.y = y;
+
+      raycaster.setFromCamera(mouseRef.current, camera);
+      const intersects = raycaster.intersectObject(globe);
+
+      if (intersects.length > 0) {
+        const point = intersects[0].point;
+        const lat = 90 - THREE.MathUtils.radToDeg(Math.acos(point.y / EARTH_RADIUS));
+        const lon = normalizeLongitude(THREE.MathUtils.radToDeg(Math.atan2(point.z, point.x)));
+
+        const countryFeature = findCountry(lat, lon);
+        const countryName =
+          countryFeature?.properties.ADMIN ||
+          countryFeature?.properties.NAME ||
+          null;
+
+        if (countryName && lastHoveredCountryRef.current !== countryName) {
+          renderer.domElement.style.cursor = "pointer";
+          lastHoveredCountryRef.current = countryName;
+        } else if (!countryName && lastHoveredCountryRef.current !== null) {
+          renderer.domElement.style.cursor = "grab";
+          lastHoveredCountryRef.current = null;
+        }
+      } else {
+        if (lastHoveredCountryRef.current !== null) {
+          renderer.domElement.style.cursor = "grab";
+          lastHoveredCountryRef.current = null;
+        }
+      }
+    };
+
+    window.addEventListener("mousemove", handleMouseMoveCursor);
     window.addEventListener("mousemove", handleMove);
 
     const handleResize = () => {
@@ -443,10 +575,8 @@ export default function Globe() {
     animate();
 
     return () => {
-      if (hoverTimerRef.current) {
-        clearTimeout(hoverTimerRef.current);
-      }
       cancelAnimationFrame(frameId);
+      window.removeEventListener("mousemove", handleMouseMoveCursor);
       window.removeEventListener("mousemove", handleMove);
       window.removeEventListener("resize", handleResize);
       controls.dispose();
@@ -485,11 +615,30 @@ export default function Globe() {
         </button>
       </div>
 
-      {(tooltip.visible || tooltip.pending) && (
+      {ripples.map((ripple) => (
+        <div
+          key={ripple.id}
+          style={{
+            position: "fixed",
+            left: ripple.x,
+            top: ripple.y,
+            width: ripple.radius * 2,
+            height: ripple.radius * 2,
+            borderRadius: "50%",
+            border: "2px solid rgba(38, 211, 255, 0.6)",
+            transform: `translate(-50%, -50%)`,
+            opacity: Math.max(0, 1 - ripple.radius / 40),
+            pointerEvents: "none",
+            zIndex: 5,
+          }}
+        />
+      ))}
+
+      {tooltip.visible && (
         <div
           style={{
             position: "fixed",
-            top: tooltip.y + 16,
+            top: tooltip.y + 16 + tooltipOffsetY,
             left: tooltip.x + 16,
             minWidth: 180,
             maxWidth: 260,
@@ -503,16 +652,20 @@ export default function Globe() {
             backdropFilter: "blur(14px)",
             zIndex: 20,
             fontFamily: "system-ui, -apple-system, sans-serif",
+            opacity: tooltipOpacity,
+            transform: `scale(${tooltipScale})`,
+            transformOrigin: "top left",
+            transition: "opacity 0.2s ease-out, transform 0.2s ease-out",
           }}
         >
           <div style={{ fontSize: 14, opacity: 0.75, marginBottom: 6 }}>
-            {tooltip.pending ? "Hover for 1 second to show weather" : "Country Info"}
+            Country Info
           </div>
           <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>
-            {tooltip.country ?? "Unknown"}
+            {tooltip.country}
           </div>
           <div style={{ fontSize: 14, lineHeight: 1.5 }}>
-            Avg Temp: {tooltip.temp ?? "..."}°C
+            Avg Temp: {tooltip.temp}°C
           </div>
         </div>
       )}
@@ -531,4 +684,5 @@ const buttonStyle = {
   fontFamily: "system-ui, -apple-system, sans-serif",
   cursor: "pointer",
   boxShadow: "0 14px 28px rgba(0,0,0,0.22)",
+  transition: "all 0.2s ease",
 };
