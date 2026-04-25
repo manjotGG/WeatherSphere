@@ -8,6 +8,7 @@ const GEOJSON_URL = "/data/countries.geojson";
 const ZOOM_MIN = 6;
 const ZOOM_MAX = 18;
 const MOUSE_MOVE_THROTTLE = 100; // ms
+const CURSOR_COUNTRY_THROTTLE = 80; // ms — throttle expensive findCountry in cursor handler
 
 function normalizeLongitude(lon) {
   let normalized = lon;
@@ -23,6 +24,19 @@ function latLonToVector(lon, lat, radius = EARTH_RADIUS) {
   const y = radius * Math.cos(phi);
   const z = radius * Math.sin(phi) * Math.sin(theta);
   return new THREE.Vector3(x, y, z);
+}
+
+/**
+ * Inverse of latLonToVector — converts a 3D point on the globe back to lat/lon.
+ * Must account for the +180° theta offset used in latLonToVector.
+ */
+function vectorToLatLon(point, radius = EARTH_RADIUS) {
+  const lat = 90 - THREE.MathUtils.radToDeg(Math.acos(point.y / radius));
+  // atan2(z, x) gives theta, but latLonToVector adds 180° to lon,
+  // so we must subtract 180° here to get the real longitude back.
+  let lon = THREE.MathUtils.radToDeg(Math.atan2(point.z, point.x)) - 180;
+  lon = normalizeLongitude(lon);
+  return { lat, lon };
 }
 
 function pointInRing(lon, lat, ring) {
@@ -188,6 +202,8 @@ export default function Globe() {
   const globeRef = useRef(null);
   const cameraForCursorRef = useRef(null);
   const lastHoveredCountryRef = useRef(null);
+  const lastCursorCountryTimeRef = useRef(0);
+  const currentMousePosRef = useRef({ x: 0, y: 0 }); // track raw screen coords
 
   const [tooltip, setTooltip] = useState({
     x: 0,
@@ -415,10 +431,19 @@ export default function Globe() {
       animateRipple();
     };
 
+    const dismissTooltip = () => {
+      clearHighlight();
+      setTooltip({ x: 0, y: 0, country: null, temp: null, visible: false });
+      setTooltipOpacity(0);
+    };
+
     const handleMove = (event) => {
       const now = Date.now();
       if (now - lastMouseTimeRef.current < MOUSE_MOVE_THROTTLE) return;
       lastMouseTimeRef.current = now;
+
+      // Store current screen position so async callbacks use fresh coords
+      currentMousePosRef.current = { x: event.clientX, y: event.clientY };
 
       const rect = renderer.domElement.getBoundingClientRect();
       mouseRef.current.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
@@ -429,19 +454,13 @@ export default function Globe() {
 
       if (intersects.length > 0) {
         const point = intersects[0].point;
-        const lat =
-          90 -
-          THREE.MathUtils.radToDeg(
-            Math.acos(point.y / EARTH_RADIUS)
-          );
-        const lon = normalizeLongitude(
-          THREE.MathUtils.radToDeg(Math.atan2(point.z, point.x))
-        );
+        const { lat, lon } = vectorToLatLon(point);
 
         const countryFeature = findCountry(lat, lon);
         const countryName =
-          countryFeature?.properties.ADMIN ||
-          countryFeature?.properties.NAME ||
+          countryFeature?.properties?.name ||
+          countryFeature?.properties?.ADMIN ||
+          countryFeature?.properties?.NAME ||
           null;
 
         if (countryName) {
@@ -454,9 +473,11 @@ export default function Globe() {
             fetchWeather(lat, lon)
               .then((weatherTemp) => {
                 weatherCacheRef.current[cacheKey] = weatherTemp;
+                // Use latest mouse position (not the stale event coords)
+                const pos = currentMousePosRef.current;
                 setTooltip({
-                  x: event.clientX,
-                  y: event.clientY,
+                  x: pos.x,
+                  y: pos.y,
                   country: countryName,
                   temp: weatherTemp,
                   visible: true,
@@ -465,9 +486,10 @@ export default function Globe() {
               })
               .catch(() => {
                 weatherCacheRef.current[cacheKey] = "N/A";
+                const pos = currentMousePosRef.current;
                 setTooltip({
-                  x: event.clientX,
-                  y: event.clientY,
+                  x: pos.x,
+                  y: pos.y,
                   country: countryName,
                   temp: "N/A",
                   visible: true,
@@ -487,14 +509,10 @@ export default function Globe() {
 
           updateCountryHighlight(countryFeature);
         } else {
-          clearHighlight();
-          setTooltip({ x: 0, y: 0, country: null, temp: null, visible: false });
-          setTooltipOpacity(0);
+          dismissTooltip();
         }
       } else {
-        clearHighlight();
-        setTooltip({ x: 0, y: 0, country: null, temp: null, visible: false });
-        setTooltipOpacity(0);
+        dismissTooltip();
       }
     };
 
@@ -514,7 +532,8 @@ export default function Globe() {
       animateIn();
     };
 
-    // Fast cursor update handler (unthrottled for smooth cursor feedback)
+    // Cursor handler — runs a lightweight raycaster hit-test on every move,
+    // but throttles the expensive findCountry() lookup.
     const handleMouseMoveCursor = (event) => {
       const rect = renderer.domElement.getBoundingClientRect();
       const x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
@@ -527,14 +546,19 @@ export default function Globe() {
       const intersects = raycaster.intersectObject(globe);
 
       if (intersects.length > 0) {
+        // Only run the expensive findCountry at a throttled rate
+        const now = Date.now();
+        if (now - lastCursorCountryTimeRef.current < CURSOR_COUNTRY_THROTTLE) return;
+        lastCursorCountryTimeRef.current = now;
+
         const point = intersects[0].point;
-        const lat = 90 - THREE.MathUtils.radToDeg(Math.acos(point.y / EARTH_RADIUS));
-        const lon = normalizeLongitude(THREE.MathUtils.radToDeg(Math.atan2(point.z, point.x)));
+        const { lat, lon } = vectorToLatLon(point);
 
         const countryFeature = findCountry(lat, lon);
         const countryName =
-          countryFeature?.properties.ADMIN ||
-          countryFeature?.properties.NAME ||
+          countryFeature?.properties?.name ||
+          countryFeature?.properties?.ADMIN ||
+          countryFeature?.properties?.NAME ||
           null;
 
         if (countryName && lastHoveredCountryRef.current !== countryName) {
@@ -552,8 +576,16 @@ export default function Globe() {
       }
     };
 
-    window.addEventListener("mousemove", handleMouseMoveCursor);
-    window.addEventListener("mousemove", handleMove);
+    // Reset everything when mouse leaves the canvas
+    const handleMouseLeave = () => {
+      renderer.domElement.style.cursor = "grab";
+      lastHoveredCountryRef.current = null;
+      dismissTooltip();
+    };
+
+    renderer.domElement.addEventListener("mousemove", handleMouseMoveCursor);
+    renderer.domElement.addEventListener("mousemove", handleMove);
+    renderer.domElement.addEventListener("mouseleave", handleMouseLeave);
 
     const handleResize = () => {
       const width = mountRef.current.clientWidth;
@@ -576,9 +608,11 @@ export default function Globe() {
 
     return () => {
       cancelAnimationFrame(frameId);
-      window.removeEventListener("mousemove", handleMouseMoveCursor);
-      window.removeEventListener("mousemove", handleMove);
+      renderer.domElement.removeEventListener("mousemove", handleMouseMoveCursor);
+      renderer.domElement.removeEventListener("mousemove", handleMove);
+      renderer.domElement.removeEventListener("mouseleave", handleMouseLeave);
       window.removeEventListener("resize", handleResize);
+      renderer.domElement.style.cursor = "default";
       controls.dispose();
       renderer.dispose();
     };
