@@ -1,0 +1,152 @@
+/*
+ * UI Component Styles — Loading overlay & Error boundary
+ */
+
+/* ── Loading Overlay ───────────────────────────────────────────────── */
+
+.loading-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--ws-z-overlay);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--ws-bg-primary);
+  transition: opacity 0.5s ease-out;
+  pointer-events: none;
+}
+
+.loading-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--ws-space-6);
+  animation: ws-fade-in-up 0.6s ease-out;
+}
+
+/* Animated concentric rings */
+.loading-globe {
+  position: relative;
+  width: 100px;
+  height: 100px;
+}
+
+.loading-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 1.5px solid transparent;
+}
+
+.loading-ring-1 {
+  border-top-color: var(--ws-accent);
+  border-right-color: var(--ws-accent);
+  animation: ws-spin 1.8s linear infinite;
+}
+
+.loading-ring-2 {
+  inset: 12px;
+  border-bottom-color: rgba(129, 140, 248, 0.6);
+  border-left-color: rgba(129, 140, 248, 0.6);
+  animation: ws-spin 2.4s linear infinite reverse;
+}
+
+.loading-ring-3 {
+  inset: 24px;
+  border-top-color: rgba(56, 189, 248, 0.3);
+  animation: ws-spin 3.2s linear infinite;
+}
+
+.loading-dot {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 8px;
+  height: 8px;
+  background: var(--ws-accent);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 12px var(--ws-accent-glow);
+  animation: ws-pulse 1.5s ease-in-out infinite;
+}
+
+.loading-text {
+  font-size: var(--ws-font-size-lg);
+  font-weight: 600;
+  letter-spacing: -0.3px;
+  background: var(--ws-accent-gradient);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.loading-subtext {
+  font-size: var(--ws-font-size-sm);
+  color: var(--ws-text-muted);
+  animation: ws-pulse 2s ease-in-out infinite;
+}
+
+/* ── Error Boundary ────────────────────────────────────────────────── */
+
+.error-boundary {
+  position: fixed;
+  inset: 0;
+  z-index: var(--ws-z-overlay);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--ws-bg-primary);
+}
+
+.error-boundary-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--ws-space-4);
+  max-width: 400px;
+  padding: var(--ws-space-10);
+  text-align: center;
+  animation: ws-scale-in 0.4s ease-out;
+}
+
+.error-boundary-icon {
+  font-size: 48px;
+  margin-bottom: var(--ws-space-2);
+}
+
+.error-boundary-title {
+  font-size: var(--ws-font-size-xl);
+  font-weight: 700;
+  color: var(--ws-text-primary);
+  margin: 0;
+}
+
+.error-boundary-message {
+  font-size: var(--ws-font-size-base);
+  color: var(--ws-text-secondary);
+  line-height: 1.6;
+}
+
+.error-boundary-retry {
+  margin-top: var(--ws-space-4);
+  padding: var(--ws-space-3) var(--ws-space-6);
+  font-family: var(--ws-font);
+  font-size: var(--ws-font-size-base);
+  font-weight: 500;
+  color: var(--ws-bg-primary);
+  background: var(--ws-accent);
+  border: none;
+  border-radius: var(--ws-radius-md);
+  cursor: pointer;
+  transition: all var(--ws-transition-fast);
+}
+
+.error-boundary-retry:hover {
+  background: #60ccf8;
+  transform: translateY(-1px);
+  box-shadow: var(--ws-shadow-glow);
+}
+
+.error-boundary-retry:active {
+  transform: translateY(0);
+}

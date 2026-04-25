@@ -1,0 +1,227 @@
+/*
+ * WeatherSphere Design System
+ *
+ * A dark, space-inspired theme with glassmorphism effects.
+ * All component CSS files reference these tokens — never hardcode
+ * colors, spacing, or fonts in component styles.
+ */
+
+/* ── Google Fonts ──────────────────────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+/* ── Design Tokens ─────────────────────────────────────────────────── */
+:root {
+  /* Color palette — deep space + electric accent */
+  --ws-bg-primary: #040913;
+  --ws-bg-secondary: #0a1628;
+  --ws-bg-glass: rgba(8, 16, 38, 0.72);
+  --ws-bg-glass-hover: rgba(12, 22, 48, 0.85);
+
+  --ws-border-subtle: rgba(255, 255, 255, 0.08);
+  --ws-border-medium: rgba(255, 255, 255, 0.14);
+  --ws-border-accent: rgba(56, 189, 248, 0.35);
+
+  --ws-text-primary: #f0f4ff;
+  --ws-text-secondary: rgba(203, 213, 240, 0.75);
+  --ws-text-muted: rgba(148, 163, 194, 0.55);
+
+  --ws-accent: #38bdf8;
+  --ws-accent-glow: rgba(56, 189, 248, 0.25);
+  --ws-accent-gradient: linear-gradient(135deg, #38bdf8, #818cf8);
+
+  --ws-success: #34d399;
+  --ws-warning: #fbbf24;
+  --ws-error: #f87171;
+
+  /* Spacing scale (4px base) */
+  --ws-space-1: 4px;
+  --ws-space-2: 8px;
+  --ws-space-3: 12px;
+  --ws-space-4: 16px;
+  --ws-space-5: 20px;
+  --ws-space-6: 24px;
+  --ws-space-8: 32px;
+  --ws-space-10: 40px;
+  --ws-space-12: 48px;
+
+  /* Radius */
+  --ws-radius-sm: 8px;
+  --ws-radius-md: 12px;
+  --ws-radius-lg: 16px;
+  --ws-radius-xl: 20px;
+  --ws-radius-full: 9999px;
+
+  /* Shadows */
+  --ws-shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.25);
+  --ws-shadow-md: 0 8px 24px rgba(0, 0, 0, 0.35);
+  --ws-shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.45);
+  --ws-shadow-glow: 0 0 20px var(--ws-accent-glow);
+
+  /* Effects */
+  --ws-blur: blur(16px);
+  --ws-blur-heavy: blur(32px);
+
+  /* Transitions */
+  --ws-transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --ws-transition-base: 250ms cubic-bezier(0.4, 0, 0.2, 1);
+  --ws-transition-slow: 400ms cubic-bezier(0.4, 0, 0.2, 1);
+  --ws-transition-spring: 500ms cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* Typography */
+  --ws-font: 'Inter', system-ui, -apple-system, sans-serif;
+  --ws-font-size-xs: 11px;
+  --ws-font-size-sm: 13px;
+  --ws-font-size-base: 14px;
+  --ws-font-size-md: 16px;
+  --ws-font-size-lg: 20px;
+  --ws-font-size-xl: 28px;
+  --ws-font-size-2xl: 36px;
+
+  /* Z-index scale */
+  --ws-z-map: 0;
+  --ws-z-controls: 10;
+  --ws-z-panel: 20;
+  --ws-z-popup: 30;
+  --ws-z-search: 40;
+  --ws-z-overlay: 100;
+}
+
+/* ── CSS Reset ─────────────────────────────────────────────────────── */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: var(--ws-font);
+  font-size: var(--ws-font-size-base);
+  color: var(--ws-text-primary);
+  background: var(--ws-bg-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+#root {
+  position: relative;
+}
+
+/* ── Keyframe Animations ───────────────────────────────────────────── */
+
+@keyframes ws-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes ws-fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes ws-scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes ws-slide-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes ws-slide-out-right {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+}
+
+@keyframes ws-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.5; }
+}
+
+@keyframes ws-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes ws-shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+/* ── Utility Classes ───────────────────────────────────────────────── */
+
+.ws-glass {
+  background: var(--ws-bg-glass);
+  backdrop-filter: var(--ws-blur);
+  -webkit-backdrop-filter: var(--ws-blur);
+  border: 1px solid var(--ws-border-subtle);
+}
+
+.ws-glass:hover {
+  background: var(--ws-bg-glass-hover);
+  border-color: var(--ws-border-medium);
+}
+
+.ws-skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.04) 25%,
+    rgba(255, 255, 255, 0.08) 50%,
+    rgba(255, 255, 255, 0.04) 75%
+  );
+  background-size: 200% 100%;
+  animation: ws-shimmer 1.5s ease-in-out infinite;
+  border-radius: var(--ws-radius-sm);
+}
+
+/* ── Scrollbar Styling ─────────────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: var(--ws-radius-full);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}

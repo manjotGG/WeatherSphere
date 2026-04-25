@@ -1,0 +1,92 @@
+/*
+ * GlobeMap styles — map container, controls, and atmosphere effects.
+ */
+
+/* ── Map Container ─────────────────────────────────────────────────── */
+
+.globe-map-container {
+  position: absolute;
+  inset: 0;
+  z-index: var(--ws-z-map);
+}
+
+/*
+ * Override Mapbox GL's default control styles to match our design.
+ * We hide the built-in controls since we provide our own.
+ */
+.mapboxgl-ctrl-bottom-left,
+.mapboxgl-ctrl-bottom-right {
+  display: none;
+}
+
+.mapboxgl-ctrl-top-left,
+.mapboxgl-ctrl-top-right {
+  display: none;
+}
+
+/* ── Globe Controls ────────────────────────────────────────────────── */
+
+.globe-controls {
+  position: fixed;
+  right: var(--ws-space-5);
+  bottom: var(--ws-space-5);
+  z-index: var(--ws-z-controls);
+  display: flex;
+  flex-direction: column;
+  gap: var(--ws-space-1);
+  padding: var(--ws-space-2);
+  background: var(--ws-bg-glass);
+  backdrop-filter: var(--ws-blur);
+  -webkit-backdrop-filter: var(--ws-blur);
+  border: 1px solid var(--ws-border-subtle);
+  border-radius: var(--ws-radius-lg);
+  box-shadow: var(--ws-shadow-lg);
+  animation: ws-fade-in-up 0.4s ease-out;
+}
+
+.globe-controls-divider {
+  width: 60%;
+  height: 1px;
+  margin: var(--ws-space-1) auto;
+  background: var(--ws-border-subtle);
+}
+
+.globe-control-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: none;
+  border-radius: var(--ws-radius-md);
+  background: transparent;
+  color: var(--ws-text-primary);
+  cursor: pointer;
+  transition: all var(--ws-transition-fast);
+}
+
+.globe-control-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--ws-accent);
+  transform: scale(1.05);
+}
+
+.globe-control-btn:active {
+  transform: scale(0.95);
+  background: rgba(255, 255, 255, 0.12);
+}
+
+/* ── Responsive ────────────────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  .globe-controls {
+    right: var(--ws-space-3);
+    bottom: var(--ws-space-3);
+  }
+
+  .globe-control-btn {
+    width: 36px;
+    height: 36px;
+  }
+}

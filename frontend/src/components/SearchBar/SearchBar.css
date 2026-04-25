@@ -1,0 +1,151 @@
+/*
+ * SearchBar styles — Floating search with glassmorphism dropdown.
+ */
+
+.search-bar {
+  position: fixed;
+  top: var(--ws-space-5);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: var(--ws-z-search);
+  width: min(420px, calc(100vw - 40px));
+  animation: ws-fade-in-up 0.5s ease-out 0.3s both; /* Slight delay after map loads */
+}
+
+/* ── Input Wrapper ─────────────────────────────────────────────────── */
+
+.search-bar-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  background: var(--ws-bg-glass);
+  backdrop-filter: var(--ws-blur);
+  -webkit-backdrop-filter: var(--ws-blur);
+  border: 1px solid var(--ws-border-subtle);
+  border-radius: var(--ws-radius-full);
+  transition: all var(--ws-transition-base);
+  box-shadow: var(--ws-shadow-md);
+}
+
+.search-bar-input-wrapper:focus-within {
+  border-color: var(--ws-border-accent);
+  box-shadow: var(--ws-shadow-md), var(--ws-shadow-glow);
+}
+
+.search-bar-icon {
+  position: absolute;
+  left: var(--ws-space-4);
+  color: var(--ws-text-muted);
+  pointer-events: none;
+  flex-shrink: 0;
+}
+
+.search-bar-input {
+  width: 100%;
+  padding: var(--ws-space-3) var(--ws-space-10) var(--ws-space-3) var(--ws-space-10);
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--ws-text-primary);
+  font-family: var(--ws-font);
+  font-size: var(--ws-font-size-base);
+  letter-spacing: 0.2px;
+}
+
+.search-bar-input::placeholder {
+  color: var(--ws-text-muted);
+}
+
+/* Spinner */
+.search-bar-spinner {
+  position: absolute;
+  right: var(--ws-space-4);
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--ws-border-subtle);
+  border-top-color: var(--ws-accent);
+  border-radius: 50%;
+  animation: ws-spin 0.7s linear infinite;
+}
+
+/* Clear button */
+.search-bar-clear {
+  position: absolute;
+  right: var(--ws-space-3);
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--ws-text-secondary);
+  border-radius: var(--ws-radius-full);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  transition: all var(--ws-transition-fast);
+}
+
+.search-bar-clear:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--ws-text-primary);
+}
+
+/* ── Dropdown ──────────────────────────────────────────────────────── */
+
+.search-bar-dropdown {
+  position: absolute;
+  top: calc(100% + var(--ws-space-2));
+  left: 0;
+  right: 0;
+  list-style: none;
+  padding: var(--ws-space-2);
+  margin: 0;
+  background: var(--ws-bg-glass);
+  backdrop-filter: var(--ws-blur);
+  -webkit-backdrop-filter: var(--ws-blur);
+  border: 1px solid var(--ws-border-subtle);
+  border-radius: var(--ws-radius-lg);
+  box-shadow: var(--ws-shadow-lg);
+  animation: ws-scale-in 0.2s ease-out;
+  overflow: hidden;
+}
+
+.search-bar-item {
+  display: flex;
+  align-items: center;
+  gap: var(--ws-space-3);
+  padding: var(--ws-space-3) var(--ws-space-4);
+  border-radius: var(--ws-radius-md);
+  cursor: pointer;
+  transition: all var(--ws-transition-fast);
+  font-size: var(--ws-font-size-sm);
+  color: var(--ws-text-secondary);
+}
+
+.search-bar-item:hover,
+.search-bar-item--active {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--ws-text-primary);
+}
+
+.search-bar-item-icon {
+  color: var(--ws-accent);
+  flex-shrink: 0;
+}
+
+.search-bar-item-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Responsive ────────────────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  .search-bar {
+    top: var(--ws-space-3);
+    width: calc(100vw - 24px);
+  }
+}
