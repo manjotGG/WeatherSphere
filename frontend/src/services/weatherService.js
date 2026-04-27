@@ -1,80 +1,16 @@
 /**
- * OpenWeather API service.
+ * Weather API service — proxied through backend.
  *
- * All weather-related API calls go through this module so the rest of the app
- * works with a normalized data shape — if the API changes or we switch providers,
- * only this file needs updating.
+ * All weather-related API calls go through the backend server, which:
+ *   - Injects the OpenWeather API key server-side (never exposed to client)
+ *   - Applies rate limiting and circuit breaker protection
+ *   - Caches responses in Redis
  *
- * Requirements:
- *   - Set VITE_OPENWEATHER_API_KEY in your .env file
- *   - Uses metric units (Celsius, m/s)
+ * The backend returns the same normalized data shape, so components
+ * remain unchanged.
  */
 
-import { OPENWEATHER_BASE } from '../utils/constants.js';
-
-/**
- * @returns {string} API key or empty string
- */
-function getApiKey() {
-  return import.meta.env.VITE_OPENWEATHER_API_KEY || '';
-}
-
-// ── Normalized Response Shapes ───────────────────────────────────────
-//
-// Every public function in this module returns data in these shapes
-// so consumers never deal with raw API responses.
-//
-// CurrentWeather:
-//   { temp, feelsLike, humidity, windSpeed, windDeg,
-//     description, icon, pressure, visibility }
-//
-// Location:
-//   { name, country, lat, lon }
-//
-// ForecastEntry:
-//   { dt, temp, tempMin, tempMax, description, icon, humidity, windSpeed }
-
-/**
- * Normalize a raw OpenWeather "current weather" response.
- */
-function normalizeCurrentWeather(raw) {
-  return {
-    current: {
-      temp: raw.main?.temp ?? null,
-      feelsLike: raw.main?.feels_like ?? null,
-      humidity: raw.main?.humidity ?? null,
-      windSpeed: raw.wind?.speed ?? null,
-      windDeg: raw.wind?.deg ?? null,
-      description: raw.weather?.[0]?.description ?? '',
-      icon: raw.weather?.[0]?.icon ?? '',
-      pressure: raw.main?.pressure ?? null,
-      visibility: raw.visibility ?? null,
-    },
-    location: {
-      name: raw.name ?? '',
-      country: raw.sys?.country ?? '',
-      lat: raw.coord?.lat ?? null,
-      lon: raw.coord?.lon ?? null,
-    },
-  };
-}
-
-/**
- * Normalize a raw OpenWeather "5-day / 3-hour forecast" response.
- */
-function normalizeForecast(raw) {
-  const list = raw.list ?? [];
-  return list.map((entry) => ({
-    dt: entry.dt,
-    temp: entry.main?.temp ?? null,
-    tempMin: entry.main?.temp_min ?? null,
-    tempMax: entry.main?.temp_max ?? null,
-    description: entry.weather?.[0]?.description ?? '',
-    icon: entry.weather?.[0]?.icon ?? '',
-    humidity: entry.main?.humidity ?? null,
-    windSpeed: entry.wind?.speed ?? null,
-  }));
-}
+import { API_BASE } from '../utils/constants.js';
 
 // ── Public API ───────────────────────────────────────────────────────
 
@@ -85,28 +21,25 @@ function normalizeForecast(raw) {
  * @param {number} lon  Longitude
  * @param {AbortSignal} [signal]  Optional AbortController signal
  * @returns {Promise<{current: Object, location: Object}>}
- * @throws {Error} On network failure, missing API key, or non-OK status
+ * @throws {Error} On network failure or non-OK status
  */
 export async function fetchCurrentWeather(lat, lon, signal) {
-  const key = getApiKey();
-  if (!key) {
-    throw new Error(
-      'Missing VITE_OPENWEATHER_API_KEY. Add it to your .env file.'
-    );
-  }
-
-  const url = `${OPENWEATHER_BASE}/weather?lat=${lat}&lon=${lon}&units=metric&appid=${key}`;
+  const url = `${API_BASE}/api/weather/current?lat=${lat}&lon=${lon}`;
   const res = await fetch(url, { signal });
+
+  if (res.status === 429) {
+    const retryAfter = res.headers.get('Retry-After') || '30';
+    throw new Error(`Rate limited. Please wait ${retryAfter} seconds.`);
+  }
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error(
-      body.message || `OpenWeather API error: ${res.status}`
+      body.message || `Weather API error: ${res.status}`
     );
   }
 
-  const raw = await res.json();
-  return normalizeCurrentWeather(raw);
+  return await res.json();
 }
 
 /**
@@ -118,23 +51,20 @@ export async function fetchCurrentWeather(lat, lon, signal) {
  * @returns {Promise<Array<{dt, temp, description, icon, …}>>}
  */
 export async function fetchForecast(lat, lon, signal) {
-  const key = getApiKey();
-  if (!key) {
-    throw new Error(
-      'Missing VITE_OPENWEATHER_API_KEY. Add it to your .env file.'
-    );
-  }
-
-  const url = `${OPENWEATHER_BASE}/forecast?lat=${lat}&lon=${lon}&units=metric&appid=${key}`;
+  const url = `${API_BASE}/api/weather/forecast?lat=${lat}&lon=${lon}`;
   const res = await fetch(url, { signal });
+
+  if (res.status === 429) {
+    const retryAfter = res.headers.get('Retry-After') || '30';
+    throw new Error(`Rate limited. Please wait ${retryAfter} seconds.`);
+  }
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error(
-      body.message || `OpenWeather Forecast API error: ${res.status}`
+      body.message || `Forecast API error: ${res.status}`
     );
   }
 
-  const raw = await res.json();
-  return normalizeForecast(raw);
+  return await res.json();
 }

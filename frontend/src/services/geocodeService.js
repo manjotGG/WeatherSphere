@@ -1,18 +1,15 @@
 /**
- * Mapbox Geocoding service for location search.
+ * Geocoding service — proxied through backend.
  *
- * Uses the Mapbox Geocoding API (v5) to convert text queries into
- * geographic coordinates. The same Mapbox token used for the map works here.
+ * Searches for locations via the backend's /api/geocode/search endpoint,
+ * which proxies to Mapbox Geocoding with server-side token injection.
+ *
+ * Note: The Mapbox token is still used in the frontend for map rendering
+ * (required by the Mapbox GL JS SDK), but geocoding API calls are now
+ * proxied to prevent abuse.
  */
 
-import { MAPBOX_GEOCODING_BASE } from '../utils/constants.js';
-
-/**
- * @returns {string} Mapbox access token
- */
-function getToken() {
-  return import.meta.env.VITE_MAPBOX_TOKEN || '';
-}
+import { API_BASE } from '../utils/constants.js';
 
 /**
  * Search for locations matching a text query.
@@ -24,26 +21,20 @@ function getToken() {
  * @returns {Promise<Array<{name: string, lat: number, lon: number, bbox: number[]|null}>>}
  */
 export async function searchLocations(query, { limit = 5, signal } = {}) {
-  const token = getToken();
-  if (!token) {
-    throw new Error('Missing VITE_MAPBOX_TOKEN. Add it to your .env file.');
-  }
-
   const encoded = encodeURIComponent(query.trim());
-  const url = `${MAPBOX_GEOCODING_BASE}/${encoded}.json?access_token=${token}&limit=${limit}&types=place,country,region`;
+  const url = `${API_BASE}/api/geocode/search?q=${encoded}&limit=${limit}`;
 
   const res = await fetch(url, { signal });
 
-  if (!res.ok) {
-    throw new Error(`Geocoding API error: ${res.status}`);
+  if (res.status === 429) {
+    const retryAfter = res.headers.get('Retry-After') || '30';
+    throw new Error(`Rate limited. Please wait ${retryAfter} seconds.`);
   }
 
-  const data = await res.json();
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.message || `Geocoding API error: ${res.status}`);
+  }
 
-  return (data.features || []).map((f) => ({
-    name: f.place_name || f.text || '',
-    lat: f.center[1],
-    lon: f.center[0],
-    bbox: f.bbox || null,
-  }));
+  return await res.json();
 }

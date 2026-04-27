@@ -27,17 +27,18 @@ export const COUNTRY_LINE_LAYER = 'country-line';
 export const COUNTRY_HIGHLIGHT_LAYER = 'country-highlight-fill';
 export const COUNTRY_HIGHLIGHT_LINE_LAYER = 'country-highlight-line';
 
-// ── Weather API ──────────────────────────────────────────────────────
-export const OPENWEATHER_BASE = 'https://api.openweathermap.org/data/2.5';
+// ── Backend API ──────────────────────────────────────────────────────
+// API calls now go through the backend (which proxies to OpenWeather/Mapbox).
+// API keys stay server-side — never exposed in client bundle.
+export const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3001';
+
+// ── Weather icon URL (still direct — it's just public CDN images) ────
 export const OPENWEATHER_ICON_BASE = 'https://openweathermap.org/img/wn';
 
 /** Cache weather responses for 10 minutes to avoid excessive API calls */
 export const WEATHER_CACHE_TTL_MS = 10 * 60 * 1000;
 /** Max entries in the LRU cache */
 export const WEATHER_CACHE_MAX = 100;
-
-// ── Geocoding ────────────────────────────────────────────────────────
-export const MAPBOX_GEOCODING_BASE = 'https://api.mapbox.com/geocoding/v5/mapbox.places';
 
 // ── Interaction ──────────────────────────────────────────────────────
 /** Debounce delay for search input (ms) */
