@@ -9,6 +9,7 @@ import { Router } from 'express';
 import { validateWeatherParams } from '../middleware/requestValidator.js';
 import { weatherLimiter } from '../middleware/rateLimiter.js';
 import { circuitBreakerMiddleware } from '../middleware/circuitBreaker.js';
+import logger from '../utils/logger.js';
 import { getCurrentWeather, getWeatherForecast } from '../services/weatherProxy.js';
 
 const router = Router();
@@ -27,6 +28,7 @@ router.get('/current', validateWeatherParams, async (req, res) => {
     const data = await getCurrentWeather(lat, lon);
     res.json(data);
   } catch (err) {
+    logger.error({ err, requestId: req.requestId, lat: req.validatedParams.lat, lon: req.validatedParams.lon }, 'Weather current request failed');
     res.status(502).json({
       error: 'Bad Gateway',
       message: err.message || 'Failed to fetch weather data',
@@ -44,6 +46,7 @@ router.get('/forecast', validateWeatherParams, async (req, res) => {
     const data = await getWeatherForecast(lat, lon);
     res.json(data);
   } catch (err) {
+    logger.error({ err, requestId: req.requestId, lat: req.validatedParams.lat, lon: req.validatedParams.lon }, 'Weather forecast request failed');
     res.status(502).json({
       error: 'Bad Gateway',
       message: err.message || 'Failed to fetch forecast data',

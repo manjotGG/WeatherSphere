@@ -109,6 +109,7 @@ export async function getCurrentWeather(lat, lon) {
     logger.debug({ lat, lon }, 'Weather current: fetched from upstream');
     return data;
   } catch (err) {
+    logger.error({ err, url, lat, lon }, 'Weather current upstream failed');
     await circuitFailure(CIRCUIT_NAME);
 
     // Try to return stale cache on failure
@@ -155,6 +156,7 @@ export async function getWeatherForecast(lat, lon) {
 
     return data;
   } catch (err) {
+    logger.error({ err, url, lat, lon }, 'Weather forecast upstream failed');
     await circuitFailure(CIRCUIT_NAME);
 
     const stale = await cacheGet(cacheKey);

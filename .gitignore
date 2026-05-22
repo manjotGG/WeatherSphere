@@ -12,6 +12,8 @@ yarn-error.log*
 .env.development.local
 .env.test.local
 .env.production.local
+.env.example
+.env.example
 
 # build output
 dist/
@@ -29,3 +31,5 @@ build/
 
 # misc
 *.log
+
+.env.example

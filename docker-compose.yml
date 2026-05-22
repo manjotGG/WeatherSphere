@@ -54,11 +54,14 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: ws_backend_1
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     environment:
       - NODE_ENV=production
       - PORT=3001
       - REDIS_URL=redis://redis:6379
-      - REDIS_KEY_PREFIX=ws:
+      - "REDIS_KEY_PREFIX=ws:"
       - OPENWEATHER_API_KEY=${OPENWEATHER_API_KEY}
       - MAPBOX_TOKEN=${MAPBOX_TOKEN}
       - CORS_ORIGINS=http://localhost,http://localhost:80
@@ -88,11 +91,14 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: ws_backend_2
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     environment:
       - NODE_ENV=production
       - PORT=3002
       - REDIS_URL=redis://redis:6379
-      - REDIS_KEY_PREFIX=ws:
+      - "REDIS_KEY_PREFIX=ws:"
       - OPENWEATHER_API_KEY=${OPENWEATHER_API_KEY}
       - MAPBOX_TOKEN=${MAPBOX_TOKEN}
       - CORS_ORIGINS=http://localhost,http://localhost:80
@@ -152,4 +158,3 @@ networks:
     driver: bridge
   backend_net:
     driver: bridge
-    internal: true

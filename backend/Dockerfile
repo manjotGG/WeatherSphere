@@ -9,7 +9,8 @@ RUN npm ci --omit=dev
 
 # ── Production stage ──────────────────────────────────────────────
 FROM node:22-alpine
-
+# Install required runtime packages for HTTPS and health checks
+RUN apk add --no-cache ca-certificates
 # Security: run as non-root user
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 
