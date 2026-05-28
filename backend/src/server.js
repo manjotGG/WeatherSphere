@@ -63,6 +63,15 @@ app.use('/health', healthRoutes);
 // Prometheus metrics endpoint
 app.get('/metrics', getMetrics);
 
+// Root route for Render health checks and deployment smoke tests
+app.get('/', (_req, res) => {
+  res.json({
+    status: 'ok',
+    app: 'WeatherSphere API',
+    message: 'Backend running',
+  });
+});
+
 // API routes (each has its own rate limiter + circuit breaker)
 app.use('/api/weather', weatherRoutes);
 app.use('/api/geocode', geocodeRoutes);
