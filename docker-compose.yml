@@ -25,14 +25,12 @@
 services:
   # ── Nginx Load Balancer ──────────────────────────────────────────
   nginx:
-    image: nginx:1.27-alpine
+    build:
+      context: .
+      dockerfile: ./frontend/Dockerfile
     container_name: ws_nginx
     ports:
       - "80:80"
-    volumes:
-      - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./infra/nginx/upstream.conf:/etc/nginx/conf.d/upstream.conf:ro
-      - ./frontend/dist:/usr/share/nginx/html:ro
     depends_on:
       - backend_1
       - backend_2

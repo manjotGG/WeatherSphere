@@ -30,7 +30,7 @@ export const COUNTRY_HIGHLIGHT_LINE_LAYER = 'country-highlight-line';
 // ── Backend API ──────────────────────────────────────────────────────
 // API calls now go through the backend (which proxies to OpenWeather/Mapbox).
 // API keys stay server-side — never exposed in client bundle.
-export const API_BASE = import.meta.env.VITE_API_BASE || '/api';
+export const API_BASE = (import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE || '').replace(/\/$/, '');
 
 // ── Weather icon URL (still direct — it's just public CDN images) ────
 export const OPENWEATHER_ICON_BASE = 'https://openweathermap.org/img/wn';
