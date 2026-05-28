@@ -34,10 +34,8 @@ services:
       - ./infra/nginx/upstream.conf:/etc/nginx/conf.d/upstream.conf:ro
       - ./frontend/dist:/usr/share/nginx/html:ro
     depends_on:
-      backend_1:
-        condition: service_healthy
-      backend_2:
-        condition: service_healthy
+      - backend_1
+      - backend_2
     restart: unless-stopped
     networks:
       - frontend_net
@@ -54,6 +52,8 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: ws_backend_1
+    ports:
+      - "3001:3001"
     dns:
       - 8.8.8.8
       - 1.1.1.1
@@ -91,12 +91,14 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: ws_backend_2
+    ports:
+      - "3002:3001"
     dns:
       - 8.8.8.8
       - 1.1.1.1
     environment:
       - NODE_ENV=production
-      - PORT=3002
+      - PORT=3001
       - REDIS_URL=redis://redis:6379
       - "REDIS_KEY_PREFIX=ws:"
       - OPENWEATHER_API_KEY=${OPENWEATHER_API_KEY}
@@ -109,7 +111,7 @@ services:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3002/health/live"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3001/health/live"]
       interval: 15s
       timeout: 5s
       retries: 3
