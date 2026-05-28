@@ -9,7 +9,7 @@
  * The backend returns the same normalized data shape, so components
  * remain unchanged.
  */
-
+const API = import.meta.env.VITE_API_URL;
 import { API_BASE } from '../utils/constants.js';
 
 // ── Public API ───────────────────────────────────────────────────────
