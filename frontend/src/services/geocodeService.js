@@ -9,7 +9,7 @@
  * proxied to prevent abuse.
  */
 
-import { API_BASE } from '../utils/constants.js';
+import { resolveApiBase } from '../utils/constants.js';
 
 /**
  * Search for locations matching a text query.
@@ -22,7 +22,8 @@ import { API_BASE } from '../utils/constants.js';
  */
 export async function searchLocations(query, { limit = 5, signal } = {}) {
   const encoded = encodeURIComponent(query.trim());
-  const url = `${API_BASE}/api/geocode/search?q=${encoded}&limit=${limit}`;
+  const base = resolveApiBase();
+  const url = base ? `${base}/api/geocode/search?q=${encoded}&limit=${limit}` : `/api/geocode/search?q=${encoded}&limit=${limit}`;
 
   const res = await fetch(url, { signal });
 

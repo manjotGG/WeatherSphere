@@ -21,7 +21,7 @@ const config = {
 
   // ── Redis ───────────────────────────────────────────────────────
   redis: {
-    url: process.env.REDIS_URL || 'redis://localhost:6379',
+    url: process.env.REDIS_URL || (env === 'production' ? undefined : 'redis://localhost:6379'),
     // Prefix all keys to avoid collisions if Redis is shared
     keyPrefix: process.env.REDIS_KEY_PREFIX || 'ws:',
     password: process.env.REDIS_PASSWORD || undefined,

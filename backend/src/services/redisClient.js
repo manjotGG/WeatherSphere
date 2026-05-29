@@ -32,14 +32,24 @@ const fallbackStore = new Map();
  * Calling this multiple times returns the same instance.
  */
 export function getRedisClient() {
+  if (!config.redis.url) {
+    logger.info('Redis URL not configured — skipping Redis client initialization');
+    return null;
+  }
+
   if (client) return client;
 
   client = new Redis(config.redis.url, {
     password: config.redis.password,
     keyPrefix: config.redis.keyPrefix,
-    maxRetriesPerRequest: 3,
+    connectTimeout: 1000,
+    maxRetriesPerRequest: 1,
     retryStrategy(times) {
-      // Exponential backoff: 200ms, 400ms, 800ms, ... max 10s
+      if (times >= 5) {
+        logger.warn({ attempt: times }, 'Redis reconnecting: max retries reached; continuing without Redis');
+        return null;
+      }
+
       const delay = Math.min(times * 200, 10_000);
       logger.warn({ attempt: times, delayMs: delay }, 'Redis reconnecting...');
       return delay;

@@ -13,6 +13,9 @@
  * State is shared via Redis; the server itself is stateless.
  */
 
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import express from 'express';
 import config from './config/index.js';
 import logger from './utils/logger.js';
@@ -34,6 +37,11 @@ import { getRedisClient, closeRedis } from './services/redisClient.js';
 // ── Initialize ──────────────────────────────────────────────────────
 
 const app = express();
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const frontendDistDir = path.resolve(__dirname, '..', '..', 'frontend', 'dist');
+const frontendIndexPath = path.join(frontendDistDir, 'index.html');
+const hasFrontendBuild = fs.existsSync(frontendIndexPath);
 
 // Trust the first proxy (Nginx) — required for correct req.ip behind LB
 app.set('trust proxy', 1);
@@ -63,18 +71,36 @@ app.use('/health', healthRoutes);
 // Prometheus metrics endpoint
 app.get('/metrics', getMetrics);
 
-// Root route for Render health checks and deployment smoke tests
-app.get('/', (_req, res) => {
-  res.json({
-    status: 'ok',
-    app: 'WeatherSphere API',
-    message: 'Backend running',
+if (hasFrontendBuild) {
+  app.use(express.static(frontendDistDir));
+} else {
+  // Root route for Render health checks and deployment smoke tests
+  app.get('/', (_req, res) => {
+    res.json({
+      status: 'ok',
+      app: 'WeatherSphere API',
+      message: 'Backend running',
+    });
   });
-});
+}
 
 // API routes (each has its own rate limiter + circuit breaker)
 app.use('/api/weather', weatherRoutes);
 app.use('/api/geocode', geocodeRoutes);
+
+if (hasFrontendBuild) {
+  app.use((req, res, next) => {
+    if (req.path.startsWith('/api/') || req.path.startsWith('/health') || req.path.startsWith('/metrics')) {
+      return next();
+    }
+
+    if (req.path.includes('.')) {
+      return next();
+    }
+
+    return res.sendFile(frontendIndexPath);
+  });
+}
 
 // ── 404 handler ─────────────────────────────────────────────────────
 app.use((req, res) => {
@@ -96,10 +122,14 @@ app.use((err, req, res, _next) => {
 // ── Start Server ────────────────────────────────────────────────────
 
 // Initialize Redis connection (non-blocking — app starts even if Redis is down)
-try {
-  getRedisClient();
-} catch (err) {
-  logger.warn({ err }, 'Redis initialization failed — running in degraded mode');
+if (config.redis.url) {
+  try {
+    getRedisClient();
+  } catch (err) {
+    logger.warn({ err }, 'Redis initialization failed — running in degraded mode');
+  }
+} else {
+  logger.info('Redis not configured — running in degraded mode');
 }
 
 const server = app.listen(config.port, () => {

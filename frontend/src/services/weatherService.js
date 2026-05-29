@@ -1,8 +1,8 @@
-import { API_BASE } from '../utils/constants.js';
+import { resolveApiBase } from '../utils/constants.js';
 
 export async function fetchCurrentWeather(lat, lon, signal) {
-  const base = API_BASE || '';
-  const url = `${base}/api/weather/current?lat=${lat}&lon=${lon}`;
+  const base = resolveApiBase();
+  const url = base ? `${base}/api/weather/current?lat=${lat}&lon=${lon}` : `/api/weather/current?lat=${lat}&lon=${lon}`;
   const res = await fetch(url, { signal });
 
   if (!res.ok) {
@@ -14,8 +14,8 @@ export async function fetchCurrentWeather(lat, lon, signal) {
 }
 
 export async function fetchForecast(lat, lon, signal) {
-  const base = API_BASE || '';
-  const url = `${base}/api/weather/forecast?lat=${lat}&lon=${lon}`;
+  const base = resolveApiBase();
+  const url = base ? `${base}/api/weather/forecast?lat=${lat}&lon=${lon}` : `/api/weather/forecast?lat=${lat}&lon=${lon}`;
   const res = await fetch(url, { signal });
 
   if (!res.ok) {
