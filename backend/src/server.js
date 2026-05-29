@@ -39,9 +39,28 @@ import { getRedisClient, closeRedis } from './services/redisClient.js';
 const app = express();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const frontendDistDir = path.resolve(__dirname, '..', '..', 'frontend', 'dist');
-const frontendIndexPath = path.join(frontendDistDir, 'index.html');
-const hasFrontendBuild = fs.existsSync(frontendIndexPath);
+
+const possibleDirs = [
+  path.resolve(__dirname, '..', '..', 'frontend', 'dist'),
+  path.resolve(__dirname, '..', 'frontend', 'dist'),
+  path.resolve(__dirname, '..', 'public'),
+  path.resolve('/app/frontend/dist'),
+  path.resolve('/app/dist')
+];
+
+let frontendDistDir = possibleDirs[0];
+let frontendIndexPath = path.join(frontendDistDir, 'index.html');
+let hasFrontendBuild = false;
+
+for (const dir of possibleDirs) {
+  const indexPath = path.join(dir, 'index.html');
+  if (fs.existsSync(indexPath)) {
+    frontendDistDir = dir;
+    frontendIndexPath = indexPath;
+    hasFrontendBuild = true;
+    break;
+  }
+}
 
 // Trust the first proxy (Nginx) — required for correct req.ip behind LB
 app.set('trust proxy', 1);
@@ -83,6 +102,13 @@ if (hasFrontendBuild) {
     });
   });
 }
+
+// API config endpoint
+app.get('/api/config', (req, res) => {
+  res.json({
+    mapboxToken: config.mapbox.token
+  });
+});
 
 // API routes (each has its own rate limiter + circuit breaker)
 app.use('/api/weather', weatherRoutes);

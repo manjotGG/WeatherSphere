@@ -19,7 +19,7 @@
  *   mapRef — mutable ref object to receive the Mapbox map instance
  */
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import mapboxgl from 'mapbox-gl';
 import {
   MAP_STYLE,
@@ -37,9 +37,12 @@ import {
 
 /**
  * Set the Mapbox access token from environment.
- * This runs once at module load time.
+ * If not present in environment, it will be fetched dynamically from /api/config.
  */
-mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN || '';
+const initialToken = import.meta.env.VITE_MAPBOX_TOKEN || '';
+if (initialToken) {
+  mapboxgl.accessToken = initialToken;
+}
 
 export default function GlobeMap({
   onCountryHover,
@@ -48,6 +51,9 @@ export default function GlobeMap({
   selectedLocation,
   mapRef: externalMapRef,
 }) {
+  const [token, setToken] = useState(initialToken);
+  const [tokenError, setTokenError] = useState(null);
+
   const containerRef = useRef(null);
   const internalMapRef = useRef(null);
   const hoveredCountryRef = useRef(null);
@@ -69,9 +75,41 @@ export default function GlobeMap({
     externalMapRefStable.current = externalMapRef;
   });
 
+  // ── Fetch Mapbox Token Dynamically if Missing ─────────────────────
+  useEffect(() => {
+    if (token) return;
+
+    let active = true;
+    fetch('/api/config')
+      .then((res) => {
+        if (!res.ok) {
+          throw new Error(`Failed to fetch /api/config (status: ${res.status})`);
+        }
+        return res.json();
+      })
+      .then((data) => {
+        if (!active) return;
+        if (data && data.mapboxToken) {
+          mapboxgl.accessToken = data.mapboxToken;
+          setToken(data.mapboxToken);
+        } else {
+          throw new Error('Config endpoint returned empty or missing Mapbox token');
+        }
+      })
+      .catch((err) => {
+        if (!active) return;
+        console.error('Mapbox token fetch failed:', err);
+        setTokenError(err.message || 'Unknown network error');
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [token]);
+
   // ── Initialize Map ─────────────────────────────────────────────────
   useEffect(() => {
-    if (!containerRef.current || internalMapRef.current) return;
+    if (!token || !containerRef.current || internalMapRef.current) return;
 
     const map = new mapboxgl.Map({
       container: containerRef.current,
@@ -237,7 +275,7 @@ export default function GlobeMap({
         externalMapRefStable.current.current = null;
       }
     };
-  }, []); // Empty deps — map initializes once
+  }, [token]); // Re-run when token is set
 
   // ── Fly to selected location (from search) ─────────────────────────
   useEffect(() => {
@@ -260,6 +298,39 @@ export default function GlobeMap({
       });
     }
   }, [selectedLocation]);
+
+  if (tokenError) {
+    return (
+      <div className="globe-map-container" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#040913', color: '#ef4444', padding: '2rem', textAlign: 'center', zIndex: 10 }}>
+        <div>
+          <h2 style={{ marginBottom: '1rem', fontFamily: 'var(--ws-font-header, inherit)' }}>Map Load Error</h2>
+          <p style={{ color: '#9ca3af', maxWidth: '400px', margin: '0 auto 1.5rem auto', fontSize: '0.95rem' }}>
+            Failed to load Mapbox security configuration from the server.
+          </p>
+          <code style={{ display: 'block', padding: '0.75rem', backgroundColor: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: '6px', fontSize: '0.85rem', color: '#fca5a5' }}>
+            {tokenError}
+          </code>
+        </div>
+      </div>
+    );
+  }
+
+  if (!token) {
+    return (
+      <div className="globe-map-container" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#040913', color: '#38bdf8', zIndex: 10 }}>
+        <div style={{ textAlign: 'center' }}>
+          <div className="loader" style={{ border: '3px solid rgba(56, 189, 248, 0.1)', borderTop: '3px solid #38bdf8', borderRadius: '50%', width: '40px', height: '40px', animation: 'spin 1s linear infinite', margin: '0 auto 1rem auto' }}></div>
+          <p style={{ color: '#9ca3af', fontSize: '0.9rem' }}>Initializing Weather Globe...</p>
+          <style>{`
+            @keyframes spin {
+              0% { transform: rotate(0deg); }
+              100% { transform: rotate(360deg); }
+            }
+          `}</style>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
