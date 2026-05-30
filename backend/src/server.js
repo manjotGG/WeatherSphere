@@ -79,13 +79,17 @@ app.use('/api/weather', weatherRoutes);
 app.use('/api/geocode', geocodeRoutes);
 
 // ── Serve React frontend (production) ────────────────────────────────
-const frontendDist = path.join(__dirname, '..', '..', 'frontend', 'dist');
+// Resolve frontend/dist relative to the backend/src directory
+// Container layout: /app/backend/src/server.js → /app/frontend/dist
+const frontendDist = path.resolve(__dirname, '..', '..', 'frontend', 'dist');
 
-// Serve Vite-built static assets (JS, CSS, images, etc.)
+// Log the resolved path on startup so you can verify it in Render logs
+console.log('[static] serving frontend from:', frontendDist);
+
+// Serve Vite-built static assets
 app.use(express.static(frontendDist));
 
-// Express 5 compatible wildcard — serves index.html for all unmatched routes
-// so React Router can handle client-side navigation
+// Express 5 compatible wildcard catch-all for React Router
 app.get('/{*path}', (req, res) => {
   res.sendFile(path.join(frontendDist, 'index.html'));
 });
