@@ -9,6 +9,13 @@ RUN npm ci
 
 # Copy frontend source and build it
 COPY frontend/ ./
+
+# Accept build-time tokens from Render's "Build & Deploy > Environment" settings
+ARG VITE_MAPBOX_TOKEN
+ARG VITE_API_BASE
+ENV VITE_MAPBOX_TOKEN=$VITE_MAPBOX_TOKEN
+ENV VITE_API_BASE=$VITE_API_BASE
+
 RUN npm run build
 
 # ── Stage 2: Build Backend Dependencies ──────────────────────────────

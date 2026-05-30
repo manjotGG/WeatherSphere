@@ -13,7 +13,6 @@
  * State is shared via Redis; the server itself is stateless.
  */
 
-import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
@@ -39,28 +38,6 @@ import { getRedisClient, closeRedis } from './services/redisClient.js';
 const app = express();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
-const possibleDirs = [
-  path.resolve(__dirname, '..', '..', 'frontend', 'dist'),
-  path.resolve(__dirname, '..', 'frontend', 'dist'),
-  path.resolve(__dirname, '..', 'public'),
-  path.resolve('/app/frontend/dist'),
-  path.resolve('/app/dist')
-];
-
-let frontendDistDir = possibleDirs[0];
-let frontendIndexPath = path.join(frontendDistDir, 'index.html');
-let hasFrontendBuild = false;
-
-for (const dir of possibleDirs) {
-  const indexPath = path.join(dir, 'index.html');
-  if (fs.existsSync(indexPath)) {
-    frontendDistDir = dir;
-    frontendIndexPath = indexPath;
-    hasFrontendBuild = true;
-    break;
-  }
-}
 
 // Trust the first proxy (Nginx) — required for correct req.ip behind LB
 app.set('trust proxy', 1);
@@ -90,19 +67,6 @@ app.use('/health', healthRoutes);
 // Prometheus metrics endpoint
 app.get('/metrics', getMetrics);
 
-if (hasFrontendBuild) {
-  app.use(express.static(frontendDistDir));
-} else {
-  // Root route for Render health checks and deployment smoke tests
-  app.get('/', (_req, res) => {
-    res.json({
-      status: 'ok',
-      app: 'WeatherSphere API',
-      message: 'Backend running',
-    });
-  });
-}
-
 // API config endpoint
 app.get('/api/config', (req, res) => {
   res.json({
@@ -114,19 +78,16 @@ app.get('/api/config', (req, res) => {
 app.use('/api/weather', weatherRoutes);
 app.use('/api/geocode', geocodeRoutes);
 
-if (hasFrontendBuild) {
-  app.use((req, res, next) => {
-    if (req.path.startsWith('/api/') || req.path.startsWith('/health') || req.path.startsWith('/metrics')) {
-      return next();
-    }
+// ── Serve React frontend (production) ────────────────────────────────
+const frontendDist = path.join(__dirname, '..', '..', 'frontend', 'dist');
 
-    if (req.path.includes('.')) {
-      return next();
-    }
+// Serve Vite-built static assets (JS, CSS, images, etc.)
+app.use(express.static(frontendDist));
 
-    return res.sendFile(frontendIndexPath);
-  });
-}
+// For React Router: any unmatched route returns index.html
+app.get('*', (req, res) => {
+  res.sendFile(path.join(frontendDist, 'index.html'));
+});
 
 // ── 404 handler ─────────────────────────────────────────────────────
 app.use((req, res) => {
