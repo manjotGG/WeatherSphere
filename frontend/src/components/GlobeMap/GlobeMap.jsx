@@ -35,6 +35,8 @@ import {
   COUNTRY_HIGHLIGHT_LINE_LAYER,
 } from '../../utils/constants.js';
 
+const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3001';
+
 /**
  * Set the Mapbox access token from environment.
  * If not present in environment, it will be fetched dynamically from /api/config.
@@ -80,10 +82,11 @@ export default function GlobeMap({
     if (token) return;
 
     let active = true;
-    fetch('/api/config')
+    const url = `${API_BASE}/api/config`;
+    fetch(url)
       .then((res) => {
         if (!res.ok) {
-          throw new Error(`Failed to fetch /api/config (status: ${res.status})`);
+          throw new Error(`Failed to fetch ${url} (status: ${res.status})`);
         }
         return res.json();
       })

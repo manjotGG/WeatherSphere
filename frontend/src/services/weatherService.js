@@ -1,8 +1,7 @@
-import { resolveApiBase } from '../utils/constants.js';
+const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3001';
 
 export async function fetchCurrentWeather(lat, lon, signal) {
-  const base = resolveApiBase();
-  const url = base ? `${base}/api/weather/current?lat=${lat}&lon=${lon}` : `/api/weather/current?lat=${lat}&lon=${lon}`;
+  const url = `${API_BASE}/api/weather/current?lat=${lat}&lon=${lon}`;
   const res = await fetch(url, { signal });
 
   if (!res.ok) {
@@ -14,8 +13,7 @@ export async function fetchCurrentWeather(lat, lon, signal) {
 }
 
 export async function fetchForecast(lat, lon, signal) {
-  const base = resolveApiBase();
-  const url = base ? `${base}/api/weather/forecast?lat=${lat}&lon=${lon}` : `/api/weather/forecast?lat=${lat}&lon=${lon}`;
+  const url = `${API_BASE}/api/weather/forecast?lat=${lat}&lon=${lon}`;
   const res = await fetch(url, { signal });
 
   if (!res.ok) {

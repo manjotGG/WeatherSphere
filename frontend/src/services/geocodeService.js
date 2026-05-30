@@ -9,7 +9,7 @@
  * proxied to prevent abuse.
  */
 
-import { resolveApiBase } from '../utils/constants.js';
+const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3001';
 
 /**
  * Search for locations matching a text query.
@@ -22,8 +22,7 @@ import { resolveApiBase } from '../utils/constants.js';
  */
 export async function searchLocations(query, { limit = 5, signal } = {}) {
   const encoded = encodeURIComponent(query.trim());
-  const base = resolveApiBase();
-  const url = base ? `${base}/api/geocode/search?q=${encoded}&limit=${limit}` : `/api/geocode/search?q=${encoded}&limit=${limit}`;
+  const url = `${API_BASE}/api/geocode/search?q=${encoded}&limit=${limit}`;
 
   const res = await fetch(url, { signal });
 

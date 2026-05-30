@@ -67,6 +67,11 @@ app.use('/health', healthRoutes);
 // Prometheus metrics endpoint
 app.get('/metrics', getMetrics);
 
+// Root status check
+app.get('/', (req, res) => {
+  res.json({ status: 'ok', app: 'WeatherSphere API', message: 'Backend running' });
+});
+
 // API config endpoint
 app.get('/api/config', (req, res) => {
   res.json({
@@ -77,20 +82,6 @@ app.get('/api/config', (req, res) => {
 // API routes (each has its own rate limiter + circuit breaker)
 app.use('/api/weather', weatherRoutes);
 app.use('/api/geocode', geocodeRoutes);
-
-// ── Serve React frontend (production) ────────────────────────────────
-// Hardcoded absolute path — guaranteed by Dockerfile Stage 3
-// WORKDIR /app  +  COPY frontend/dist → ./frontend/dist
-const frontendDist = '/app/frontend/dist';
-
-console.log('[static] serving frontend from:', frontendDist);
-
-app.use(express.static(frontendDist));
-
-// Express 5 wildcard catch-all for React Router client-side navigation
-app.get('/{*path}', (req, res) => {
-  res.sendFile(path.join(frontendDist, 'index.html'));
-});
 
 // ── 404 handler ─────────────────────────────────────────────────────
 app.use((req, res) => {

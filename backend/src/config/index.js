@@ -14,9 +14,8 @@ const config = {
   env,
   port: parseInt(process.env.PORT || '3001', 10),
 
-  // ── CORS ────────────────────────────────────────────────────────
   corsOrigins: process.env.CORS_ORIGINS
-    ? process.env.CORS_ORIGINS.split(',')
+    ? process.env.CORS_ORIGINS.split(',').map(s => s.trim())
     : ['http://localhost:5173', 'http://localhost:4173'],
 
   // ── Redis ───────────────────────────────────────────────────────
