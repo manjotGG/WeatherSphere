@@ -84,8 +84,9 @@ const frontendDist = path.join(__dirname, '..', '..', 'frontend', 'dist');
 // Serve Vite-built static assets (JS, CSS, images, etc.)
 app.use(express.static(frontendDist));
 
-// For React Router: any unmatched route returns index.html
-app.get('*', (req, res) => {
+// Express 5 compatible wildcard — serves index.html for all unmatched routes
+// so React Router can handle client-side navigation
+app.get('/{*path}', (req, res) => {
   res.sendFile(path.join(frontendDist, 'index.html'));
 });
 
