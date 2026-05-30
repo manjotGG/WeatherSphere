@@ -79,17 +79,15 @@ app.use('/api/weather', weatherRoutes);
 app.use('/api/geocode', geocodeRoutes);
 
 // ── Serve React frontend (production) ────────────────────────────────
-// Resolve frontend/dist relative to the backend/src directory
-// Container layout: /app/backend/src/server.js → /app/frontend/dist
-const frontendDist = path.resolve(__dirname, '..', '..', 'frontend', 'dist');
+// Hardcoded absolute path — guaranteed by Dockerfile Stage 3
+// WORKDIR /app  +  COPY frontend/dist → ./frontend/dist
+const frontendDist = '/app/frontend/dist';
 
-// Log the resolved path on startup so you can verify it in Render logs
 console.log('[static] serving frontend from:', frontendDist);
 
-// Serve Vite-built static assets
 app.use(express.static(frontendDist));
 
-// Express 5 compatible wildcard catch-all for React Router
+// Express 5 wildcard catch-all for React Router client-side navigation
 app.get('/{*path}', (req, res) => {
   res.sendFile(path.join(frontendDist, 'index.html'));
 });
